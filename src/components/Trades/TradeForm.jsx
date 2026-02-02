@@ -10,7 +10,7 @@ const TradeForm = ({ onClose, onTradeAdded, addTrade }) => {
     date: new Date().toISOString().split('T')[0],
     mentor: 'Flavius',
     pair: '',
-    session: 'Asia',
+    session: '',
     result: 'TP',
     pips: '',
     notes: ''
@@ -128,7 +128,7 @@ const TradeForm = ({ onClose, onTradeAdded, addTrade }) => {
           {/* Sesiune */}
           <div>
             <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">
-              Sesiune
+              Sesiune <span className="text-red-500">*</span>
             </label>
             <div className="grid grid-cols-3 gap-2 sm:gap-3">
               {sessions.map(session => (
@@ -146,6 +146,9 @@ const TradeForm = ({ onClose, onTradeAdded, addTrade }) => {
                 </button>
               ))}
             </div>
+            {!formData.session && (
+              <p className="text-xs text-red-500 mt-1">Te rog selectează o sesiune</p>
+            )}
           </div>
 
           {/* Rezultat */}
@@ -221,7 +224,7 @@ const TradeForm = ({ onClose, onTradeAdded, addTrade }) => {
             </button>
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !formData.session}
               className="w-full sm:w-auto px-4 sm:px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:bg-blue-300 disabled:cursor-not-allowed text-sm sm:text-base order-1 sm:order-2"
             >
               {loading ? 'Se salvează...' : 'Salvează Trade'}
