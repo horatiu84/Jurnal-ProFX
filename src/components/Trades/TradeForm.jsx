@@ -16,7 +16,7 @@ const TradeForm = ({ onClose, onTradeAdded, addTrade }) => {
     notes: ''
   });
 
-  const mentors = ['Flavius', 'Mihai', 'Eli', 'Tudor', 'Daniel'];
+  const mentors = ['Flavius', 'Mihai', 'Eli', 'Tudor','Adrian', 'Daniel'];
   const sessions = ['Asia', 'Londra', 'New York'];
 
   const handleInputChange = (field, value) => {
