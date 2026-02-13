@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { Calendar } from 'lucide-react';
 import TradeItem from './TradeItem';
 
-const TradeList = ({ trades, deleteTrade }) => {
+const TradeList = ({ trades, deleteTrade, onEdit }) => {
   const currentDate = new Date();
   const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth());
@@ -158,7 +158,7 @@ const TradeList = ({ trades, deleteTrade }) => {
               {/* Lista tradeuri */}
               <div className="divide-y divide-gray-200/50">
                 {dayTrades.map(trade => (
-                  <TradeItem key={trade.id} trade={trade} deleteTrade={deleteTrade} />
+                  <TradeItem key={trade.id} trade={trade} deleteTrade={deleteTrade} onEdit={onEdit} />
                 ))}
               </div>
 

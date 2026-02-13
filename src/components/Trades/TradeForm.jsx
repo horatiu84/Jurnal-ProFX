@@ -2,18 +2,34 @@
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
 
-const TradeForm = ({ onClose, onTradeAdded, addTrade }) => {
+const TradeForm = ({ onClose, onTradeAdded, addTrade, updateTrade, editingTrade }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   
-  const [formData, setFormData] = useState({
-    date: new Date().toISOString().split('T')[0],
-    mentor: 'Flavius',
-    pair: '',
-    session: '',
-    result: 'TP',
-    pips: '',
-    notes: ''
+  const [formData, setFormData] = useState(() => {
+    if (editingTrade) {
+      // When editing, populate form with existing trade data
+      return {
+        date: editingTrade.date,
+        mentor: editingTrade.mentor,
+        pair: editingTrade.pair,
+        session: editingTrade.session,
+        result: (editingTrade.pips || 0) >= 0 ? 'TP' : 'SL',
+        pips: Math.abs(editingTrade.pips || 0).toString(),
+        notes: editingTrade.notes || ''
+      };
+    } else {
+      // When adding, use default values
+      return {
+        date: new Date().toISOString().split('T')[0],
+        mentor: 'Flavius',
+        pair: '',
+        session: '',
+        result: 'TP',
+        pips: '',
+        notes: ''
+      };
+    }
   });
 
   const mentors = ['Flavius', 'Mihai', 'Eli', 'Tudor','Adrian', 'Daniel'];
@@ -43,16 +59,22 @@ const TradeForm = ({ onClose, onTradeAdded, addTrade }) => {
       const tradeData = {
         ...formData,
         pips: pipsValue,
-        timestamp: new Date().toISOString()
+        timestamp: editingTrade ? editingTrade.timestamp : new Date().toISOString()
       };
 
-      await addTrade(tradeData);
+      if (editingTrade) {
+        // Update existing trade
+        await updateTrade(editingTrade.id, tradeData);
+      } else {
+        // Add new trade
+        await addTrade(tradeData);
+      }
       
       if (onTradeAdded) onTradeAdded();
       if (onClose) onClose();
       
     } catch (error) {
-      console.error('Error adding trade:', error);
+      console.error('Error saving trade:', error);
       setError('Eroare la salvarea trade-ului: ' + error.message);
     } finally {
       setLoading(false);
@@ -63,7 +85,9 @@ const TradeForm = ({ onClose, onTradeAdded, addTrade }) => {
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-2 sm:p-4 z-50 overflow-y-auto">
       <div className="bg-white rounded-lg sm:rounded-xl shadow-xl max-w-2xl w-full max-h-[95vh] sm:max-h-screen overflow-y-auto my-4 sm:my-0">
         <div className="sticky top-0 bg-white border-b px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center z-10">
-          <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">Adaugă Trade Nou</h2>
+          <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">
+            {editingTrade ? 'Editează Trade' : 'Adaugă Trade Nou'}
+          </h2>
           <button
             onClick={onClose}
             className="text-gray-500 hover:text-gray-700 p-1"
@@ -227,7 +251,7 @@ const TradeForm = ({ onClose, onTradeAdded, addTrade }) => {
               disabled={loading || !formData.session}
               className="w-full sm:w-auto px-4 sm:px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:bg-blue-300 disabled:cursor-not-allowed text-sm sm:text-base order-1 sm:order-2"
             >
-              {loading ? 'Se salvează...' : 'Salvează Trade'}
+              {loading ? 'Se salvează...' : (editingTrade ? 'Actualizează Trade' : 'Salvează Trade')}
             </button>
           </div>
         </form>

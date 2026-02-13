@@ -7,8 +7,9 @@ import Stats from './Stats';
 import { useTrades } from '../../hooks/useTrades';
 
 const Dashboard = () => {
-  const { trades, loading, addTrade, deleteTrade } = useTrades();
+  const { trades, loading, addTrade, updateTrade, deleteTrade } = useTrades();
   const [showTradeForm, setShowTradeForm] = useState(false);
+  const [editingTrade, setEditingTrade] = useState(null);
   const [activeTab, setActiveTab] = useState('trades'); // 'trades' or 'stats'
 
   if (loading) {
@@ -24,6 +25,17 @@ const Dashboard = () => {
 
   const handleTradeAdded = () => {
     setShowTradeForm(false);
+    setEditingTrade(null);
+  };
+
+  const handleEdit = (trade) => {
+    setEditingTrade(trade);
+    setShowTradeForm(true);
+  };
+
+  const handleCloseForm = () => {
+    setShowTradeForm(false);
+    setEditingTrade(null);
   };
 
   return (
@@ -81,7 +93,7 @@ const Dashboard = () => {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto py-4 sm:py-6 md:py-8 px-3 sm:px-4 md:px-6 lg:px-8">
         {activeTab === 'trades' ? (
-          <TradeList trades={trades} deleteTrade={deleteTrade} />
+          <TradeList trades={trades} deleteTrade={deleteTrade} onEdit={handleEdit} />
         ) : (
           <Stats trades={trades} />
         )}
@@ -90,9 +102,11 @@ const Dashboard = () => {
       {/* Trade Form Modal */}
       {showTradeForm && (
         <TradeForm 
-          onClose={() => setShowTradeForm(false)}
+          onClose={handleCloseForm}
           onTradeAdded={handleTradeAdded}
           addTrade={addTrade}
+          updateTrade={updateTrade}
+          editingTrade={editingTrade}
         />
       )}
     </div>

@@ -1,8 +1,8 @@
 // src/components/Trades/TradeItem.jsx
 import React from 'react';
-import { Trash2, Clock, TrendingUp, TrendingDown, User } from 'lucide-react';
+import { Trash2, Clock, TrendingUp, TrendingDown, User, Edit2 } from 'lucide-react';
 
-const TradeItem = ({ trade, deleteTrade }) => {
+const TradeItem = ({ trade, deleteTrade, onEdit }) => {
   const isWin = (trade.pips || 0) > 0;
   
   const handleDelete = () => {
@@ -32,20 +32,29 @@ const TradeItem = ({ trade, deleteTrade }) => {
           </div>
         </div>
 
-        {/* Linia 2: Mentor, Sesiune, Delete */}
+        {/* Linia 2: Mentor, Sesiune, Edit, Delete */}
         <div className="flex items-center justify-between text-xs text-gray-600">
           <div className="flex items-center gap-3">
             <span className="font-medium">{trade.mentor}</span>
             <span className="text-gray-400">•</span>
             <span>{trade.session}</span>
           </div>
-          <button
-            onClick={handleDelete}
-            className="p-1 text-gray-400 hover:text-red-600 transition-colors"
-            title="Șterge trade"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => onEdit(trade)}
+              className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
+              title="Editează trade"
+            >
+              <Edit2 className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={handleDelete}
+              className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+              title="Șterge trade"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
 
         {/* Notes */}
@@ -111,6 +120,14 @@ const TradeItem = ({ trade, deleteTrade }) => {
               <p className="text-sm text-blue-800 italic truncate font-medium">"{trade.notes}"</p>
             </div>
           )}
+          
+          <button
+            onClick={() => onEdit(trade)}
+            className="p-2.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all duration-200 hover:scale-110 hover:shadow-md flex-shrink-0"
+            title="Editează trade"
+          >
+            <Edit2 className="h-4 w-4" />
+          </button>
           
           <button
             onClick={handleDelete}
