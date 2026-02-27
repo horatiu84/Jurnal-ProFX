@@ -2,14 +2,34 @@
 // src/utlis/pdfGenerator.js
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { calculateMonthlyStats, getDailyStats } from './calculations';
+import { calculateMonthlyStats, calculateSessionStats, getDailyStats } from './calculations';
 
 export const generateMonthlyPDF = (trades, year, month) => {
   const doc = new jsPDF();
   
   // Calculează statisticile
   const stats = calculateMonthlyStats(trades, year, month);
+  const sessionStats = calculateSessionStats(trades, year, month);
   const dailyStats = getDailyStats(trades, year, month);
+
+  // Constante pentru paginare
+  const MAX_CONTENT_Y = 270; // Lasa spatiu pentru footer la y=285
+  const PAGE_START_Y = 20;
+
+  // Estimare precisa a inaltimii unui bloc de zi
+  // Componente: top_pad(7) + title_gap(5) + tabel_header(8) + randuri + dupa_tabel(3) + stats_cards(19) + trailing(3) = 45 fix
+  // Per rand: ~6.5mm standard, mai mult daca notele se intind pe mai multe linii
+  const estimateDayHeight = (dayTrades) => {
+    let rowsHeight = 0;
+    dayTrades.forEach(trade => {
+      const noteLen = (trade.notes || '').length;
+      // Coloana Note are 40mm latime, ~18 caractere per linie la fontSize 8
+      const noteLines = Math.max(1, Math.ceil(noteLen / 18));
+      // Rand standard ~6.5mm, randuri cu note lungi sunt mai inalte
+      rowsHeight += Math.max(6.5, noteLines * 3.5 + 2);
+    });
+    return Math.ceil(45 + rowsHeight);
+  };
   
   // Filtrează tradeurile pentru luna selectată
   const monthTrades = trades.filter(trade => {
@@ -76,12 +96,14 @@ export const generateMonthlyPDF = (trades, year, month) => {
   });
   
   Object.entries(groupedByDate).forEach(([date, dayTrades], index) => {
-    // Verifică dacă mai avem loc pe pagină
-    if (yPosition > 230) {
+    // Estimare inaltime si verificare daca incape pe pagina curenta
+    const estimatedHeight = estimateDayHeight(dayTrades);
+    if (yPosition + estimatedHeight > MAX_CONTENT_Y && yPosition > PAGE_START_Y + 5) {
       doc.addPage();
-      yPosition = 20;
+      yPosition = PAGE_START_Y;
     }
     
+    const pagesBeforeDay = doc.internal.getNumberOfPages();
     // Salvează poziția de start a card-ului pentru zi
     const dayCardStartY = yPosition;
     
@@ -91,8 +113,8 @@ export const generateMonthlyPDF = (trades, year, month) => {
     const dayLosses = dayTrades.filter(t => (t.pips || 0) < 0).length;
     const dayColor = dayTotal > 0 ? [34, 197, 94] : dayTotal < 0 ? [239, 68, 68] : [100, 100, 100];
     
-    // Mărește yPosition pentru padding
-    yPosition += 5;
+    // Padding sus - titlul trebuie centrat vizual in spatiul dintre border si tabel
+    yPosition += 7;
     
     doc.setFontSize(12);
     doc.setTextColor(...dayColor);
@@ -107,7 +129,7 @@ export const generateMonthlyPDF = (trades, year, month) => {
     // Prima linie: data și total pips (fara diacritice)
     const dateNoDiacritics = removeDiacritics(dateFormatted);
     doc.text(`${dateNoDiacritics} - ${dayTotal > 0 ? '+' : ''}${dayTotal.toFixed(1)} pips`, 105, yPosition, { align: 'center' });
-    yPosition += 7;
+    yPosition += 5;
     
     // Tabel tradeuri
     const tableData = dayTrades.map((trade, idx) => [
@@ -165,10 +187,16 @@ export const generateMonthlyPDF = (trades, year, month) => {
         }
       },
       tableWidth: 170,
-      margin: { left: (210 - 170) / 2, right: (210 - 170) / 2 }
+      margin: { left: (210 - 170) / 2, right: (210 - 170) / 2, top: PAGE_START_Y, bottom: 27 }
     });
     
-    yPosition = doc.lastAutoTable.finalY + 5;
+    yPosition = doc.lastAutoTable.finalY + 3;
+    
+    // Verifica daca cardurile de statistici incap pe pagina curenta
+    if (yPosition + 19 > MAX_CONTENT_Y) {
+      doc.addPage();
+      yPosition = PAGE_START_Y;
+    }
     
     // Calculeaza pips pentru wins si losses
     const dayPipsWon = dayTrades.filter(t => (t.pips || 0) > 0).reduce((sum, t) => sum + t.pips, 0);
@@ -242,50 +270,53 @@ export const generateMonthlyPDF = (trades, year, month) => {
     doc.setFont(undefined, 'normal');
     doc.text(dayTotal >= 0 ? 'profit - pierdere' : 'pierdere - profit', startX + (cardWidth + spacing) * 3 + 2, yPosition + 14.5);
     
-    yPosition += cardHeight + 5;
+    yPosition += cardHeight + 3;
     
-    // Desenează border în jurul întregii zile
-    const dayCardHeight = yPosition - dayCardStartY;
-    doc.setDrawColor(200, 200, 210);
-    doc.setLineWidth(0.3);
-    doc.roundedRect(15, dayCardStartY, 180, dayCardHeight, 3, 3, 'S');
+    // Desenează border în jurul întregii zile (doar daca totul e pe aceeasi pagina)
+    const pagesAfterDay = doc.internal.getNumberOfPages();
+    if (pagesBeforeDay === pagesAfterDay) {
+      const dayCardHeight = yPosition - dayCardStartY;
+      doc.setDrawColor(200, 200, 210);
+      doc.setLineWidth(0.3);
+      doc.roundedRect(15, dayCardStartY, 180, dayCardHeight, 3, 3, 'S');
+    }
     
-    yPosition += 5;
+    yPosition += 3;
   });
   
   // Adaugă o nouă pagină pentru statistici
   doc.addPage();
-  yPosition = 20;
+  yPosition = PAGE_START_Y;
   
   // Titlu statistici
   doc.setFontSize(16);
   doc.setTextColor(40, 40, 40);
   doc.setFont(undefined, 'bold');
   doc.text('Statistici Lunare', 105, yPosition, { align: 'center' });
-  yPosition += 15;
+  yPosition += 8;
   
   // Card-uri statistici principale
   const cardWidth = 85;
-  const cardHeight = 20;
-  const spacing = 10;
+  const cardHeight = 14;
+  const spacing = 5;
   
   // Card 1: Total Trades (fara diacritice)
   doc.setFillColor(59, 130, 246);
   doc.roundedRect(20, yPosition, cardWidth, cardHeight, 3, 3, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(10);
-  doc.text('Total Tradeuri', 25, yPosition + 7);
-  doc.setFontSize(16);
+  doc.text('Total Tradeuri', 25, yPosition + 5);
+  doc.setFontSize(13);
   doc.setFont(undefined, 'bold');
-  doc.text(stats.totalTrades.toString(), 25, yPosition + 16);
+  doc.text(stats.totalTrades.toString(), 25, yPosition + 11);
   
   // Card 2: Profitabile
   doc.setFillColor(34, 197, 94);
   doc.roundedRect(20 + cardWidth + spacing, yPosition, cardWidth, cardHeight, 3, 3, 'F');
   doc.setFontSize(10);
-  doc.text('Profitabile', 25 + cardWidth + spacing, yPosition + 7);
-  doc.setFontSize(16);
-  doc.text(stats.totalWins.toString(), 25 + cardWidth + spacing, yPosition + 16);
+  doc.text('Profitabile', 25 + cardWidth + spacing, yPosition + 5);
+  doc.setFontSize(13);
+  doc.text(stats.totalWins.toString(), 25 + cardWidth + spacing, yPosition + 11);
   
   yPosition += cardHeight + spacing;
   
@@ -293,20 +324,20 @@ export const generateMonthlyPDF = (trades, year, month) => {
   doc.setFillColor(239, 68, 68);
   doc.roundedRect(20, yPosition, cardWidth, cardHeight, 3, 3, 'F');
   doc.setFontSize(10);
-  doc.text('Pe Minus', 25, yPosition + 7);
-  doc.setFontSize(16);
-  doc.text(stats.totalLosses.toString(), 25, yPosition + 16);
+  doc.text('Pe Minus', 25, yPosition + 5);
+  doc.setFontSize(13);
+  doc.text(stats.totalLosses.toString(), 25, yPosition + 11);
   
   // Card 4: Win Rate
   const winRateColor = stats.winRate >= 50 ? [34, 197, 94] : [239, 68, 68];
   doc.setFillColor(...winRateColor);
   doc.roundedRect(20 + cardWidth + spacing, yPosition, cardWidth, cardHeight, 3, 3, 'F');
   doc.setFontSize(10);
-  doc.text('Rata de Win', 25 + cardWidth + spacing, yPosition + 7);
-  doc.setFontSize(16);
-  doc.text(`${stats.winRate.toFixed(1)}%`, 25 + cardWidth + spacing, yPosition + 16);
+  doc.text('Rata de Win', 25 + cardWidth + spacing, yPosition + 5);
+  doc.setFontSize(13);
+  doc.text(`${stats.winRate.toFixed(1)}%`, 25 + cardWidth + spacing, yPosition + 11);
   
-  yPosition += cardHeight + 15;
+  yPosition += cardHeight + 8;
   
   // Tabel final cu totale
   autoTable(doc, {
@@ -352,7 +383,128 @@ export const generateMonthlyPDF = (trades, year, month) => {
         }
       }
     },
-    margin: { left: 20, right: 20 }
+    margin: { left: 20, right: 20, bottom: 27 }
+  });
+  
+  yPosition = doc.lastAutoTable.finalY + 8;
+  
+  // ===========================================
+  // STATISTICI PER SESIUNE
+  // ===========================================
+  doc.setFontSize(13);
+  doc.setTextColor(40, 40, 40);
+  doc.setFont(undefined, 'bold');
+  doc.text('Statistici per Sesiune', 105, yPosition, { align: 'center' });
+  yPosition += 7;
+  
+  const sCardWidth = 53;
+  const sCardHeight = 22;
+  const sSpacing = 5;
+  const sStartX = (210 - (sCardWidth * 3 + sSpacing * 2)) / 2;
+  
+  sessionStats.forEach((stat, index) => {
+    const x = sStartX + index * (sCardWidth + sSpacing);
+    
+    // Card background
+    doc.setFillColor(250, 250, 255);
+    doc.roundedRect(x, yPosition, sCardWidth, sCardHeight, 3, 3, 'F');
+    doc.setDrawColor(200, 200, 220);
+    doc.setLineWidth(0.3);
+    doc.roundedRect(x, yPosition, sCardWidth, sCardHeight, 3, 3, 'S');
+    
+    // Nume sesiune
+    doc.setFontSize(10);
+    doc.setTextColor(40, 40, 40);
+    doc.setFont(undefined, 'bold');
+    doc.text(stat.session, x + 3, yPosition + 5);
+    
+    // Tradeuri
+    doc.setFontSize(7.5);
+    doc.setFont(undefined, 'normal');
+    doc.setTextColor(100, 100, 100);
+    doc.text('Tradeuri:', x + 3, yPosition + 10);
+    doc.setTextColor(40, 40, 40);
+    doc.setFont(undefined, 'bold');
+    doc.text(stat.total.toString(), x + sCardWidth - 3, yPosition + 10, { align: 'right' });
+    
+    // Win Rate
+    doc.setFont(undefined, 'normal');
+    doc.setTextColor(100, 100, 100);
+    doc.text('Win Rate:', x + 3, yPosition + 15);
+    const wrColor = stat.winRate >= 50 ? [34, 197, 94] : [239, 68, 68];
+    doc.setTextColor(...wrColor);
+    doc.setFont(undefined, 'bold');
+    doc.text(`${stat.winRate}%`, x + sCardWidth - 3, yPosition + 15, { align: 'right' });
+    
+    // Total pips
+    doc.setFont(undefined, 'normal');
+    doc.setTextColor(100, 100, 100);
+    doc.text('Total:', x + 3, yPosition + 20);
+    const pipsColor = stat.totalPips >= 0 ? [34, 197, 94] : [239, 68, 68];
+    doc.setTextColor(...pipsColor);
+    doc.setFont(undefined, 'bold');
+    doc.setFontSize(9);
+    doc.text(`${stat.totalPips > 0 ? '+' : ''}${stat.totalPips}`, x + sCardWidth - 3, yPosition + 20, { align: 'right' });
+  });
+  
+  yPosition += sCardHeight + 8;
+  
+  // ===========================================
+  // PERFORMANTA ZILNICA
+  // ===========================================
+  const dCols = 7;
+  const dBoxWidth = 22;
+  const dBoxHeight = 18;
+  const dGapX = dailyStats.length > 1 ? (170 - dCols * dBoxWidth) / Math.max(dCols - 1, 1) : 2;
+  const dGapY = 3;
+  const dGridStartX = 20;
+  
+  doc.setFontSize(13);
+  doc.setTextColor(40, 40, 40);
+  doc.setFont(undefined, 'bold');
+  doc.text('Performanta Zilnica', 105, yPosition, { align: 'center' });
+  yPosition += 7;
+  
+  const gridBaseY = yPosition;
+  
+  dailyStats.forEach((day, index) => {
+    const col = index % dCols;
+    const row = Math.floor(index / dCols);
+    
+    const x = dGridStartX + col * (dBoxWidth + dGapX);
+    const y = gridBaseY + row * (dBoxHeight + dGapY);
+    
+    // Box border si background
+    const borderColor = day.isPositive ? [34, 197, 94] : day.isNegative ? [239, 68, 68] : [180, 180, 180];
+    const bgColor = day.isPositive ? [240, 253, 244] : day.isNegative ? [254, 242, 242] : [245, 245, 245];
+    
+    doc.setFillColor(...bgColor);
+    doc.roundedRect(x, y, dBoxWidth, dBoxHeight, 2, 2, 'F');
+    doc.setDrawColor(...borderColor);
+    doc.setLineWidth(0.5);
+    doc.roundedRect(x, y, dBoxWidth, dBoxHeight, 2, 2, 'S');
+    
+    // Data
+    const dateStr = new Date(day.date).toLocaleDateString('ro-RO', { day: 'numeric', month: 'short' });
+    const dateNoDiacritics = removeDiacritics(dateStr);
+    doc.setFontSize(6);
+    doc.setTextColor(100, 100, 100);
+    doc.setFont(undefined, 'normal');
+    doc.text(dateNoDiacritics, x + 2, y + 4);
+    
+    // Pips
+    const pipsText = `${day.totalPips > 0 ? '+' : ''}${day.totalPips}`;
+    const pipsColor = day.isPositive ? [34, 197, 94] : day.isNegative ? [239, 68, 68] : [100, 100, 100];
+    doc.setFontSize(10);
+    doc.setTextColor(...pipsColor);
+    doc.setFont(undefined, 'bold');
+    doc.text(pipsText, x + 2, y + 11);
+    
+    // W/L
+    doc.setFontSize(6);
+    doc.setTextColor(120, 120, 120);
+    doc.setFont(undefined, 'normal');
+    doc.text(`${day.wins}W / ${day.losses}L`, x + 2, y + 16);
   });
   
   // Footer
