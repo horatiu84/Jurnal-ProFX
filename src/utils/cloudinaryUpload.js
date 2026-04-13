@@ -3,6 +3,13 @@
 
 const CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
 const UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+
+if (!CLOUD_NAME || !UPLOAD_PRESET) {
+  console.error(
+    '[Cloudinary] Variabilele de environment lipsesc! Asigură-te că VITE_CLOUDINARY_CLOUD_NAME și VITE_CLOUDINARY_UPLOAD_PRESET sunt setate în Netlify → Site configuration → Environment variables.'
+  );
+}
+
 const UPLOAD_URL = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`;
 
 /**
@@ -12,6 +19,10 @@ const UPLOAD_URL = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`;
  * @returns {Promise<{publicId: string, secureUrl: string, width: number, height: number, format: string}>}
  */
 export const uploadToCloudinary = async (file, options = {}) => {
+  if (!CLOUD_NAME || !UPLOAD_PRESET) {
+    throw new Error('Configurația Cloudinary lipsește. Contactează administratorul.');
+  }
+
   const formData = new FormData();
   formData.append('file', file);
   formData.append('upload_preset', UPLOAD_PRESET);
