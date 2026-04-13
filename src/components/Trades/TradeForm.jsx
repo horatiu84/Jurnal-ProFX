@@ -369,35 +369,45 @@ const TradeForm = ({ onClose, onTradeAdded, addTrade, updateTrade, editingTrade 
                   <span className="text-xs">PNG, JPG, WEBP până la 10MB</span>
                 </div>
 
-                {/* Zona dedicată paste */}
+                {/* Zona dedicată paste — contenteditable pentru a activa meniul Paste pe mobile */}
                 <div
                   ref={pasteZoneRef}
-                  tabIndex={0}
+                  contentEditable
+                  suppressContentEditableWarning
                   onFocus={() => setIsPasteFocused(true)}
-                  onBlur={() => setIsPasteFocused(false)}
+                  onBlur={() => {
+                    setIsPasteFocused(false);
+                    // Sterge orice text care ar fi putut fi lipit accidental
+                    if (pasteZoneRef.current) pasteZoneRef.current.innerHTML = '';
+                  }}
                   onPaste={(e) => {
+                    e.preventDefault();
                     const items = e.clipboardData?.items;
                     if (!items) return;
                     for (const item of items) {
                       if (item.type.startsWith('image/')) {
-                        e.preventDefault();
                         applyImageFile(item.getAsFile());
+                        pasteZoneRef.current?.blur();
                         break;
                       }
                     }
                   }}
-                  onClick={() => pasteZoneRef.current?.focus()}
-                  className={`w-full border-2 rounded-lg py-3 flex items-center justify-center gap-2 cursor-pointer transition-colors outline-none ${
+                  onKeyDown={(e) => {
+                    // Previne tastarea de text in zona de paste
+                    if (e.key !== 'v' || !e.ctrlKey) e.preventDefault();
+                  }}
+                  className={`w-full border-2 rounded-lg py-3 flex items-center justify-center gap-2 cursor-pointer transition-colors outline-none select-none ${
                     isPasteFocused
                       ? 'border-purple-500 bg-purple-50 text-purple-700'
                       : 'border-dashed border-gray-300 text-gray-400 hover:border-purple-400 hover:text-purple-500'
                   }`}
+                  title="Apasă lung pentru a lipi (mobile) sau Ctrl+V (desktop)"
                 >
-                  <Clipboard className="h-4 w-4 flex-shrink-0" />
-                  <span className="text-xs font-medium">
+                  <Clipboard className="h-4 w-4 flex-shrink-0 pointer-events-none" />
+                  <span className="text-xs font-medium pointer-events-none">
                     {isPasteFocused
-                      ? 'Apăsați Ctrl+V pentru a lipi'
-                      : 'Click aici, apoi Ctrl+V pentru a lipi un screenshot'}
+                      ? 'Acum apasă lung → Paste (mobile) sau Ctrl+V (desktop)'
+                      : 'Atinge aici, apoi Paste (mobile) / Ctrl+V (desktop)'}
                   </span>
                 </div>
               </div>
