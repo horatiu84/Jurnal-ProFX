@@ -1,9 +1,11 @@
 // src/components/Trades/TradeItem.jsx
-import React from 'react';
-import { Trash2, Clock, TrendingUp, TrendingDown, User, Edit2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Trash2, Clock, TrendingUp, TrendingDown, User, Edit2, X, ZoomIn } from 'lucide-react';
 
 const TradeItem = ({ trade, deleteTrade, onEdit }) => {
   const isWin = (trade.pips || 0) > 0;
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   
   const handleDelete = () => {
     if (window.confirm('Sigur vrei să ștergi acest trade?')) {
@@ -120,7 +122,7 @@ const TradeItem = ({ trade, deleteTrade, onEdit }) => {
               <p className="text-sm text-blue-800 italic truncate font-medium">"{trade.notes}"</p>
             </div>
           )}
-          
+
           <button
             onClick={() => onEdit(trade)}
             className="p-2.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all duration-200 hover:scale-110 hover:shadow-md flex-shrink-0"
@@ -128,7 +130,7 @@ const TradeItem = ({ trade, deleteTrade, onEdit }) => {
           >
             <Edit2 className="h-4 w-4" />
           </button>
-          
+        
           <button
             onClick={handleDelete}
             className="p-2.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all duration-200 hover:scale-110 hover:shadow-md flex-shrink-0"
@@ -138,8 +140,55 @@ const TradeItem = ({ trade, deleteTrade, onEdit }) => {
           </button>
         </div>
       </div>
+
+      {/* Screenshot complet sub trade */}
+      {trade.screenshot?.secureUrl && (
+        <div className="mt-3">
+          <button
+            type="button"
+            onClick={() => setLightboxOpen(true)}
+            className="relative group w-full block"
+            title="Click pentru a mări"
+          >
+            <img
+              src={trade.screenshot.secureUrl}
+              alt="Screenshot trade"
+              className="w-full rounded-xl border border-gray-200 object-contain max-h-72"
+            />
+            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 rounded-xl transition-colors flex items-center justify-center">
+              <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 rounded-full p-3">
+                <ZoomIn className="h-6 w-6 text-white" />
+              </div>
+            </div>
+          </button>
+        </div>
+      )}
+
+      {/* Lightbox — randat via Portal direct in body pentru a evita clipping */}
+      {lightboxOpen && trade.screenshot?.secureUrl && createPortal(
+        <div
+          className="fixed inset-0 z-[9999] bg-black/90 flex items-center justify-center p-4"
+          onClick={() => setLightboxOpen(false)}
+        >
+          <button
+            type="button"
+            onClick={() => setLightboxOpen(false)}
+            className="absolute top-4 right-4 bg-white/10 hover:bg-white/25 text-white rounded-full p-2 transition-colors z-10"
+          >
+            <X className="h-7 w-7" />
+          </button>
+          <img
+            src={trade.screenshot.secureUrl}
+            alt="Screenshot trade"
+            className="max-w-full max-h-[92vh] rounded-xl object-contain shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>,
+        document.body
+      )}
     </div>
   );
 };
 
 export default TradeItem;
+

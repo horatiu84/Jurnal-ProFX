@@ -1,10 +1,19 @@
 // src/components/Trades/TradeForm.jsx
-import React, { useState } from 'react';
-import { X } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { X, Upload, Image, Loader, Clipboard } from 'lucide-react';
+import { uploadToCloudinary, buildTradeFolder } from '../../utils/cloudinaryUpload';
 
 const TradeForm = ({ onClose, onTradeAdded, addTrade, updateTrade, editingTrade }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(editingTrade?.screenshot?.secureUrl || null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isPasteFocused, setIsPasteFocused] = useState(false);
+  const fileInputRef = useRef(null);
+  const dropZoneRef = useRef(null);
+  const pasteZoneRef = useRef(null);
   
   const [formData, setFormData] = useState(() => {
     if (editingTrade) {
@@ -35,11 +44,76 @@ const TradeForm = ({ onClose, onTradeAdded, addTrade, updateTrade, editingTrade 
   const mentors = ['Flavius', 'Mihai', 'Eli', 'Tudor','Adrian', 'Daniel'];
   const sessions = ['Asia', 'Londra', 'New York'];
 
+  const applyImageFile = useCallback((file) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setError('Te rog selectează un fișier imagine valid.');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setError('Imaginea nu trebuie să depășească 10MB.');
+      return;
+    }
+    setImageFile(file);
+    setError('');
+    const reader = new FileReader();
+    reader.onloadend = () => setImagePreview(reader.result);
+    reader.readAsDataURL(file);
+  }, []);
+
+  // Paste (Ctrl+V) listener
+  useEffect(() => {
+    const handlePaste = (e) => {
+      if (imagePreview) return;
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          e.preventDefault();
+          applyImageFile(item.getAsFile());
+          break;
+        }
+      }
+    };
+    document.addEventListener('paste', handlePaste);
+    return () => document.removeEventListener('paste', handlePaste);
+  }, [imagePreview, applyImageFile]);
+
   const handleInputChange = (field, value) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
     }));
+  };
+
+  const handleImageChange = (e) => {
+    applyImageFile(e.target.files[0]);
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const file = e.dataTransfer.files[0];
+    applyImageFile(file);
+  };
+
+  const handleRemoveImage = () => {
+    setImageFile(null);
+    setImagePreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleSubmit = async (e) => {
@@ -48,6 +122,18 @@ const TradeForm = ({ onClose, onTradeAdded, addTrade, updateTrade, editingTrade 
     setError('');
 
     try {
+      // Upload screenshot dacă există un fișier nou selectat
+      let screenshotData = editingTrade?.screenshot || null;
+      if (imageFile) {
+        setUploadingImage(true);
+        const folder = buildTradeFolder(formData.date, formData.mentor);
+        screenshotData = await uploadToCloudinary(imageFile, {
+          folder,
+          tags: [formData.pair, formData.mentor, formData.result].filter(Boolean),
+        });
+        setUploadingImage(false);
+      }
+
       // Convertește pips-urile la număr și aplică semnul corect în funcție de rezultat
       let pipsValue = Math.abs(parseFloat(formData.pips) || 0);
       
@@ -59,6 +145,7 @@ const TradeForm = ({ onClose, onTradeAdded, addTrade, updateTrade, editingTrade 
       const tradeData = {
         ...formData,
         pips: pipsValue,
+        screenshot: screenshotData,
         timestamp: editingTrade ? editingTrade.timestamp : new Date().toISOString()
       };
 
@@ -75,6 +162,7 @@ const TradeForm = ({ onClose, onTradeAdded, addTrade, updateTrade, editingTrade 
       
     } catch (error) {
       console.error('Error saving trade:', error);
+      setUploadingImage(false);
       setError('Eroare la salvarea trade-ului: ' + error.message);
     } finally {
       setLoading(false);
@@ -237,6 +325,100 @@ const TradeForm = ({ onClose, onTradeAdded, addTrade, updateTrade, editingTrade 
             />
           </div>
 
+          {/* Screenshot Trade */}
+          <div>
+            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">
+              Screenshot Trade (opțional)
+            </label>
+
+            {imagePreview ? (
+              <div className="relative">
+                <img
+                  src={imagePreview}
+                  alt="Screenshot trade"
+                  className="w-full rounded-lg border border-gray-300 object-contain max-h-48"
+                />
+                <button
+                  type="button"
+                  onClick={handleRemoveImage}
+                  className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition-colors"
+                  title="Șterge imaginea"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {/* Zona drag & drop / click */}
+                <div
+                  ref={dropZoneRef}
+                  onClick={() => fileInputRef.current?.click()}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  className={`w-full border-2 border-dashed rounded-lg py-6 flex flex-col items-center gap-2 cursor-pointer transition-colors ${
+                    isDragging
+                      ? 'border-blue-500 bg-blue-50 text-blue-600'
+                      : 'border-gray-300 text-gray-500 hover:border-blue-400 hover:text-blue-500'
+                  }`}
+                >
+                  <Image className="h-8 w-8" />
+                  <span className="text-sm font-medium">
+                    {isDragging ? 'Lasă imaginea aici...' : 'Click sau trage imaginea'}
+                  </span>
+                  <span className="text-xs">PNG, JPG, WEBP până la 10MB</span>
+                </div>
+
+                {/* Zona dedicată paste */}
+                <div
+                  ref={pasteZoneRef}
+                  tabIndex={0}
+                  onFocus={() => setIsPasteFocused(true)}
+                  onBlur={() => setIsPasteFocused(false)}
+                  onPaste={(e) => {
+                    const items = e.clipboardData?.items;
+                    if (!items) return;
+                    for (const item of items) {
+                      if (item.type.startsWith('image/')) {
+                        e.preventDefault();
+                        applyImageFile(item.getAsFile());
+                        break;
+                      }
+                    }
+                  }}
+                  onClick={() => pasteZoneRef.current?.focus()}
+                  className={`w-full border-2 rounded-lg py-3 flex items-center justify-center gap-2 cursor-pointer transition-colors outline-none ${
+                    isPasteFocused
+                      ? 'border-purple-500 bg-purple-50 text-purple-700'
+                      : 'border-dashed border-gray-300 text-gray-400 hover:border-purple-400 hover:text-purple-500'
+                  }`}
+                >
+                  <Clipboard className="h-4 w-4 flex-shrink-0" />
+                  <span className="text-xs font-medium">
+                    {isPasteFocused
+                      ? 'Apăsați Ctrl+V pentru a lipi'
+                      : 'Click aici, apoi Ctrl+V pentru a lipi un screenshot'}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleImageChange}
+              className="hidden"
+            />
+
+            {imageFile && (
+              <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                <Upload className="h-3 w-3" />
+                {imageFile.name} — va fi uploadat la salvare
+              </p>
+            )}
+          </div>
+
           {/* Buttons */}
           <div className="flex flex-col sm:flex-row justify-end gap-2 sm:gap-3 pt-3 sm:pt-4 border-t">
             <button
@@ -249,9 +431,15 @@ const TradeForm = ({ onClose, onTradeAdded, addTrade, updateTrade, editingTrade 
             <button
               type="submit"
               disabled={loading || !formData.session}
-              className="w-full sm:w-auto px-4 sm:px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:bg-blue-300 disabled:cursor-not-allowed text-sm sm:text-base order-1 sm:order-2"
+              className="w-full sm:w-auto px-4 sm:px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:bg-blue-300 disabled:cursor-not-allowed text-sm sm:text-base order-1 sm:order-2 flex items-center justify-center gap-2"
             >
-              {loading ? 'Se salvează...' : (editingTrade ? 'Actualizează Trade' : 'Salvează Trade')}
+              {uploadingImage ? (
+                <><Loader className="h-4 w-4 animate-spin" /> Se uploadează imaginea...</>
+              ) : loading ? (
+                'Se salvează...'
+              ) : (
+                editingTrade ? 'Actualizează Trade' : 'Salvează Trade'
+              )}
             </button>
           </div>
         </form>
