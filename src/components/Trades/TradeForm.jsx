@@ -41,7 +41,7 @@ const TradeForm = ({ onClose, onTradeAdded, addTrade, updateTrade, editingTrade 
     }
   });
 
-  const mentors = ['Flavius', 'Mihai', 'Eli', 'Tudor','Adrian', 'Daniel'];
+  const mentors = ['Flavius', 'Eli', 'Tudor', 'Adrian', 'Daniel'];
   const sessions = ['Asia', 'Londra', 'New York'];
 
   const applyImageFile = useCallback((file) => {

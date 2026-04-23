@@ -45,7 +45,7 @@ export const calculateMentorStats = (trades, year, month) => {
     return tradeDate.getFullYear() === year && tradeDate.getMonth() === month;
   });
 
-  const mentors = ['Flavius', 'Mihai', 'Eli', 'Tudor', 'Daniel'];
+  const mentors = ['Flavius', 'Eli', 'Tudor', 'Daniel'];
   
   return mentors.map(mentor => {
     const mentorTrades = monthTrades.filter(t => t.mentor === mentor);
