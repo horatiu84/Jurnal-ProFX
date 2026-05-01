@@ -63,8 +63,8 @@ const Stats = ({ trades }) => {
     return Array.from(years).sort((a, b) => b - a);
   }, [trades]);
 
-  const handleDownloadPDF = () => {
-    generateMonthlyPDF(trades, selectedYear, selectedMonth);
+  const handleDownloadPDF = async () => {
+    await generateMonthlyPDF(trades, selectedYear, selectedMonth);
   };
 
   return (

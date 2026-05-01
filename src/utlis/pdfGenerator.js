@@ -4,7 +4,51 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { calculateMonthlyStats, calculateSessionStats, getDailyStats } from './calculations';
 
-export const generateMonthlyPDF = (trades, year, month) => {
+const MAX_IMG_PX = 800; // max pixels on longest side for PDF embedding
+const IMG_QUALITY = 0.6; // JPEG quality for compression
+
+const loadImageData = async (url) => {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    const originalDataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+
+    // Resize and compress via canvas to avoid jsPDF string-length overflow
+    const { dataUrl, width, height } = await new Promise((resolve) => {
+      const img = new window.Image();
+      img.onload = () => {
+        let w = img.naturalWidth;
+        let h = img.naturalHeight;
+        const longest = Math.max(w, h);
+        if (longest > MAX_IMG_PX) {
+          const scale = MAX_IMG_PX / longest;
+          w = Math.round(w * scale);
+          h = Math.round(h * scale);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve({ dataUrl: canvas.toDataURL('image/jpeg', IMG_QUALITY), width: w, height: h });
+      };
+      img.onerror = () => resolve({ dataUrl: originalDataUrl, width: 400, height: 600 });
+      img.src = originalDataUrl;
+    });
+
+    return { dataUrl, width, height };
+  } catch {
+    return null;
+  }
+};
+
+export const generateMonthlyPDF = async (trades, year, month) => {
   const doc = new jsPDF();
   
   // Calculează statisticile
@@ -94,6 +138,18 @@ export const generateMonthlyPDF = (trades, year, month) => {
       return new Date(a.timestamp) - new Date(b.timestamp);
     });
   });
+
+  // Pre-incarca imaginile pentru toate tradeurile cu screenshot
+  const imageCache = {};
+  const tradesWithImages = monthTrades.filter(t => t.screenshot?.secureUrl);
+  await Promise.all(
+    tradesWithImages.map(async (trade) => {
+      const url = trade.screenshot.secureUrl;
+      if (!imageCache[url]) {
+        imageCache[url] = await loadImageData(url);
+      }
+    })
+  );
   
   Object.entries(groupedByDate).forEach(([date, dayTrades], index) => {
     // Estimare inaltime si verificare daca incape pe pagina curenta
@@ -141,19 +197,19 @@ export const generateMonthlyPDF = (trades, year, month) => {
       `${trade.pips > 0 ? '+' : ''}${trade.pips.toFixed(1)}`,
       trade.notes || '-'
     ]);
-    
+
     autoTable(doc, {
       startY: yPosition,
       head: [['#', 'Mentor', 'Paritate', 'Sesiune', 'Rezultat', 'Pips', 'Note']],
       body: tableData,
       theme: 'striped',
-      headStyles: { 
+      headStyles: {
         fillColor: [59, 130, 246],
         fontSize: 9,
         fontStyle: 'bold'
       },
-      bodyStyles: { 
-        fontSize: 8 
+      bodyStyles: {
+        fontSize: 8
       },
       columnStyles: {
         0: { cellWidth: 10, halign: 'center' },
@@ -165,16 +221,11 @@ export const generateMonthlyPDF = (trades, year, month) => {
         6: { cellWidth: 40 }
       },
       didParseCell: function(data) {
-        // Colorează coloana Pips
         if (data.column.index === 5 && data.section === 'body') {
           const trade = dayTrades[data.row.index];
-          if (trade.pips > 0) {
-            data.cell.styles.textColor = [34, 197, 94]; // Verde
-          } else if (trade.pips < 0) {
-            data.cell.styles.textColor = [239, 68, 68]; // Roșu
-          }
+          if (trade.pips > 0) data.cell.styles.textColor = [34, 197, 94];
+          else if (trade.pips < 0) data.cell.styles.textColor = [239, 68, 68];
         }
-        // Colorează coloana Rezultat
         if (data.column.index === 4 && data.section === 'body') {
           const trade = dayTrades[data.row.index];
           if (trade.result === 'TP') {
@@ -189,8 +240,68 @@ export const generateMonthlyPDF = (trades, year, month) => {
       tableWidth: 170,
       margin: { left: (210 - 170) / 2, right: (210 - 170) / 2, top: PAGE_START_Y, bottom: 27 }
     });
-    
+
     yPosition = doc.lastAutoTable.finalY + 3;
+
+    // Screenshots la finalul zilei - 2 pe rand, cu eticheta detaliata
+    const dayTradesWithImages = dayTrades
+      .map((trade, idx) => ({ trade, idx }))
+      .filter(({ trade }) => trade.screenshot?.secureUrl && imageCache[trade.screenshot.secureUrl]);
+
+    if (dayTradesWithImages.length > 0) {
+      const IMG_MAX_W = 78;
+      const IMG_MAX_H = 110;
+      const IMG_GAP = 9;
+      const IMG_LABEL_H = 14; // spatiu pentru 2 linii de text
+      const IMGS_PER_ROW = 2;
+      const IMG_START_X = 22;
+
+      for (let i = 0; i < dayTradesWithImages.length; i += IMGS_PER_ROW) {
+        const rowItems = dayTradesWithImages.slice(i, i + IMGS_PER_ROW).map(({ trade, idx }, j) => {
+          const imgData = imageCache[trade.screenshot.secureUrl];
+          if (!imgData) return null;
+          const aspect = imgData.width / imgData.height;
+          let w = IMG_MAX_W;
+          let h = w / aspect;
+          if (h > IMG_MAX_H) { h = IMG_MAX_H; w = h * aspect; }
+          const x = IMG_START_X + j * (IMG_MAX_W + IMG_GAP);
+          return { trade, idx, dataUrl: imgData.dataUrl, w, h, x };
+        }).filter(Boolean);
+
+        if (rowItems.length === 0) continue;
+
+        const rowH = Math.max(...rowItems.map(item => item.h)) + IMG_LABEL_H + 4;
+        if (yPosition + rowH > MAX_CONTENT_Y) {
+          doc.addPage();
+          yPosition = PAGE_START_Y;
+        }
+
+        rowItems.forEach(({ trade, idx, dataUrl, w, h, x }) => {
+          const pipsColor = trade.pips > 0 ? [34, 197, 94] : [239, 68, 68];
+          const pipsStr = `${trade.pips > 0 ? '+' : ''}${trade.pips.toFixed(1)} pips`;
+          const resultColor = trade.result === 'TP' ? [34, 197, 94] : [239, 68, 68];
+
+          // Linia 1: "#1 XAUUSD"
+          doc.setFontSize(8);
+          doc.setFont(undefined, 'bold');
+          doc.setTextColor(40, 40, 40);
+          doc.text(`#${idx + 1}  ${trade.pair}`, x, yPosition + 5);
+
+          // Linia 2: "TP  +75.0 pips"
+          doc.setFontSize(8);
+          doc.setFont(undefined, 'bold');
+          doc.setTextColor(...resultColor);
+          doc.text(trade.result, x, yPosition + 11);
+          doc.setTextColor(...pipsColor);
+          doc.text(pipsStr, x + 10, yPosition + 11);
+
+          doc.addImage(dataUrl, 'JPEG', x, yPosition + IMG_LABEL_H, w, h);
+        });
+
+        yPosition += rowH + 2;
+      }
+      yPosition += 2;
+    }
     
     // Verifica daca cardurile de statistici incap pe pagina curenta
     if (yPosition + 19 > MAX_CONTENT_Y) {
@@ -271,7 +382,7 @@ export const generateMonthlyPDF = (trades, year, month) => {
     doc.text(dayTotal >= 0 ? 'profit - pierdere' : 'pierdere - profit', startX + (cardWidth + spacing) * 3 + 2, yPosition + 14.5);
     
     yPosition += cardHeight + 3;
-    
+
     // Desenează border în jurul întregii zile (doar daca totul e pe aceeasi pagina)
     const pagesAfterDay = doc.internal.getNumberOfPages();
     if (pagesBeforeDay === pagesAfterDay) {
